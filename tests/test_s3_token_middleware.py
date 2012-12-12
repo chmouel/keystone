@@ -68,6 +68,12 @@ class FakeHTTPConnection(object):
         pass
 
     def request(self, method, path, **kwargs):
+        if kwargs.get('body'):
+            jsonbody = jsonutils.loads(kwargs['body'])
+            if jsonbody['credentials']['access'] == 'BADRESP':
+                # Return a non json in response with a 201
+                self.resp = FakeHTTPResponse(self.status, 'BADRESP')
+                return
         if self.status == 503:
             raise Exception
         ret = {'access': {'token': {'id': 'TOKEN_ID',
@@ -146,6 +152,14 @@ class S3TokenMiddlewareTest(unittest.TestCase):
         req.headers['Authorization'] = 'access:signature'
         req.headers['X-Storage-Token'] = 'token'
         self.middleware.http_client_class.status = 503
+        resp = req.get_response(self.middleware)
+        self.assertEqual(resp.status_int, 400)
+        self.assertEqual(resp.body, denied_request('InvalidURI'))
+
+    def test_fail_on_bad_keystone_reply(self):
+        req = webob.Request.blank('/v1/AUTH_cfa/c/o')
+        req.headers['Authorization'] = 'BADRESP:BADRESP'
+        req.headers['X-Storage-Token'] = 'BADRESP'
         resp = req.get_response(self.middleware)
         self.assertEqual(resp.status_int, 400)
         self.assertEqual(resp.body, denied_request('InvalidURI'))
