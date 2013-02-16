@@ -305,3 +305,11 @@ register_bool('group_allow_delete', group='ldap', default=True)
 register_str('url', group='pam', default=None)
 register_str('userid', group='pam', default=None)
 register_str('password', group='pam', default=None)
+
+# cors
+register_list('allowed_methods', group='cors',
+              default='PATCH,PUT,POST,GET,HEAD')
+register_list('expose_headers', group='cors', default='')
+register_list('allowed_origins', group='cors', default='')
+register_list('allowed_headers', group='cors', default='')
+register_int('max_age', group='cors', default=None)
