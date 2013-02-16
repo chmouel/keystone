@@ -44,6 +44,21 @@ from swift.common import utils as swift_utils
 PROTOCOL_NAME = 'S3 Token Authentication'
 
 
+def deny_request(code):
+    error_table = {
+        'AccessDenied': (401, 'Access denied'),
+        'InvalidURI': (400, 'Could not parse the specified URI'),
+    }
+    resp = webob.Response(content_type='text/xml')
+    resp.status = error_table[code][0]
+    resp.body = error_table[code][1]
+    resp.body = ('<?xml version="1.0" encoding="UTF-8"?>\r\n'
+                 '<Error>\r\n  <Code>%s</Code>\r\n  '
+                 '<Message>%s</Message>\r\n</Error>\r\n' %
+                 (code, error_table[code][1]))
+    return resp
+
+
 class ServiceError(Exception):
     pass
 
@@ -69,20 +84,6 @@ class S3Token(object):
         self.cert_file = conf.get('certfile')
         self.key_file = conf.get('keyfile')
 
-    def deny_request(self, code):
-        error_table = {
-            'AccessDenied': (401, 'Access denied'),
-            'InvalidURI': (400, 'Could not parse the specified URI'),
-        }
-        resp = webob.Response(content_type='text/xml')
-        resp.status = error_table[code][0]
-        resp.body = error_table[code][1]
-        resp.body = ('<?xml version="1.0" encoding="UTF-8"?>\r\n'
-                     '<Error>\r\n  <Code>%s</Code>\r\n  '
-                     '<Message>%s</Message>\r\n</Error>\r\n' %
-                     (code, error_table[code][1]))
-        return resp
-
     def _json_request(self, creds_json):
         headers = {'Content-Type': 'application/json'}
 
@@ -101,7 +102,7 @@ class S3Token(object):
             output = response.read()
         except Exception as e:
             self.logger.info('HTTP connection exception: %s' % e)
-            resp = self.deny_request('InvalidURI')
+            resp = deny_request('InvalidURI')
             raise ServiceError(resp)
         finally:
             conn.close()
@@ -109,7 +110,7 @@ class S3Token(object):
         if response.status < 200 or response.status >= 300:
             self.logger.debug('Keystone reply error: status=%s reason=%s' %
                               (response.status, response.reason))
-            resp = self.deny_request('AccessDenied')
+            resp = deny_request('AccessDenied')
             raise ServiceError(resp)
 
         return (response, output)
@@ -133,6 +134,7 @@ class S3Token(object):
             self.logger.debug(msg)
             return self.app(environ, start_response)
 
+        # Need a token this is passed from swift3
         token = req.headers.get('X-Auth-Token',
                                 req.headers.get('X-Storage-Token'))
         if not token:
@@ -146,7 +148,7 @@ class S3Token(object):
         except ValueError:
             msg = 'You have an invalid Authorization header: %s'
             self.logger.debug(msg % (auth_header))
-            return self.deny_request('InvalidURI')(environ, start_response)
+            return deny_request('InvalidURI')(environ, start_response)
 
         # NOTE(chmou): This is to handle the special case with nova
         # when we have the option s3_affix_tenant. We will force it to
@@ -196,7 +198,7 @@ class S3Token(object):
         except (ValueError, KeyError):
             error = 'Error on keystone reply: %d %s'
             self.logger.debug(error % (resp.status, str(output)))
-            return self.deny_request('InvalidURI')(environ, start_response)
+            return deny_request('InvalidURI')(environ, start_response)
 
         req.headers['X-Auth-Token'] = token_id
         tenant_to_connect = force_tenant or tenant['id']
