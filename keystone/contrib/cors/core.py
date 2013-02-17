@@ -18,6 +18,7 @@ import webob
 from keystone.common import logging
 from keystone.common import wsgi
 from keystone import config
+from keystone import exception
 
 
 CONF = config.CONF
@@ -48,17 +49,15 @@ class CorsMiddleware(wsgi.Middleware):
         # If the CORS origin isn't allowed return a 401
         if not self.is_origin_allowed(CONF.cors.allowed_origins,
                                       req_origin):
-            # TODO(chmou): figure out how to use exception.Unauthorized
-            msg = "Origin not allowed in allowed_origins"
-            resp.status = 401
-            return resp
+            msg = "Origin provided not allowed"
+            LOG.warning(msg)
+            raise exception.Unauthorized(msg)
 
         req_ctrlreq = request.headers.get('Access-Control-Request-Method')
         if not req_ctrlreq or (req_ctrlreq not in allowed_methods):
             msg = "Access-Control-Request-Method not in allowed_methods"
             LOG.warning(msg)
-            resp.status = 401
-            return resp
+            raise exception.Unauthorized(msg)
 
         # Always allow the x-auth-token header. This ensures
         # clients can always make a request to the resource.
@@ -88,8 +87,10 @@ class CorsMiddleware(wsgi.Middleware):
             return response
 
         if not self.is_origin_allowed(CONF.cors.allowed_origins, req_origin):
-            response.status = 401
-            return response
+            msg = "Origin provided not allowed"
+            LOG.warning(msg)
+            # TODO(chmou): Show we raise a 401?
+            return
 
         expose_headers = ['cache-control', 'content-language',
                           'content-type', 'expires', 'last-modified',
